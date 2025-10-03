@@ -1,22 +1,22 @@
 {
-  "projectName": "gitea-mirror-manager",
-  "projectOwner": "The contributors",
-  "repoType": "github",
-  "repoHost": "https://github.com",
-  "files": [
-    "README.md"
-  ],
-  "imageSize": 100,
-  "commit": true,
-  "commitConvention": "none",
-  "contributors": [
-    {
-      "login": "cptanalatriste",
-      "name": "Carlos Gavidia-Calderon",
-      "avatar_url": "https://avatars.githubusercontent.com/u/1616531?v=4",
-      "profile": "https://carlos.gavidia.me/",
-    }
-  ],
-  "contributorsPerLine": 7,
-  "linkToUsage": false
+    "projectName": "gitea-mirror-manager",
+    "projectOwner": "The contributors",
+    "repoType": "github",
+    "repoHost": "https://github.com",
+    "files": [
+        "README.md"
+    ],
+    "imageSize": 100,
+    "commit": true,
+    "commitConvention": "none",
+    "contributors": [
+        {
+            "login": "cptanalatriste",
+            "name": "Carlos Gavidia-Calderon",
+            "avatar_url": "https://avatars.githubusercontent.com/u/1616531?v=4",
+            "profile": "https://carlos.gavidia.me/"
+        }
+    ],
+    "contributorsPerLine": 7,
+    "linkToUsage": false
 }
