@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 
-python gitea_mirror_manager/mirrors.py
+python -c 'from gitea_mirror_manager import mirrors; mirrors.main()'
