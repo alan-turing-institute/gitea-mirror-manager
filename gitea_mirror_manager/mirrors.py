@@ -249,7 +249,7 @@ def main() -> None:
             repository_auth_token=repository["repository_auth_token"],
             gitea_url=MIRROR_SERVER_URL,
             token=gitea_mirror_token,
-            service="github",  # TODO(cgavidia): Maybe this can be a parameter in config.
+            service="github",  # TODO(cgavidia): Maybe this can be a parameter.
         )
 
         create_migration(
