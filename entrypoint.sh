@@ -1,0 +1,1 @@
+python gitea_mirror_manager/mirrors.py

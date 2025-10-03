@@ -1,0 +1,53 @@
+name: Lint
+
+on:
+    pull_request:
+    push:
+        branches: ["main"]
+
+jobs:
+    lint_python:
+        name: Lint Python
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v5
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: 3.11
+
+            - name: Install Hatch
+              run: pip install hatch
+
+            - name: Lint
+              run: hatch run lint:all
+
+    typing:
+        name: Typing
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v5
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: 3.11
+
+            - name: Install Hatch
+              run: pip install hatch
+
+            - name: Lint
+              run: hatch run lint:typing
+
+    shellcheck:
+        name: Shellcheck
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v5
+
+            - name: Run ShellCheck
+              uses: ludeeus/action-shellcheck@2.0.0
