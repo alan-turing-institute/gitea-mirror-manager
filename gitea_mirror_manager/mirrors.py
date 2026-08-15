@@ -11,6 +11,7 @@ logger = logging.getLogger("mirror_manager")
 logging.basicConfig(level=logging.INFO)
 
 DEFAULT_TIMEOUT: int = 5 * 60
+REPOSITORY_SEARCH_PAGE_SIZE: int = 50
 
 # Mirror server configuration
 
@@ -176,28 +177,43 @@ def get_repositories(owner: str, gitea_url: str, token: str) -> list[str]:
     logger.info(f"Searching for repositories of {owner} at {gitea_url}")
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
-    params: dict[str, str] = {"access_token": token}
+    repositories: list[str] = []
+    page = 1
 
-    response: Response = requests.get(
-        f"{gitea_url}/api/v1/repos/search",
-        params=params,
-        headers=headers,
-        timeout=DEFAULT_TIMEOUT,
-    )
+    while True:
+        params: dict[str, str] = {
+            "access_token": token,
+            "page": str(page),
+            "limit": str(REPOSITORY_SEARCH_PAGE_SIZE),
+        }
 
-    if not response.status_code == requests.codes.ok:
-        error_message: str = (
-            f"Could not list repositories for user {owner}. "
-            f"Status code: {response.status_code}. Response {response.json()}"
+        response: Response = requests.get(
+            f"{gitea_url}/api/v1/repos/search",
+            params=params,
+            headers=headers,
+            timeout=DEFAULT_TIMEOUT,
         )
 
-        raise Exception(error_message)
+        if not response.status_code == requests.codes.ok:
+            error_message: str = (
+                f"Could not list repositories for user {owner}. "
+                f"Status code: {response.status_code}. Response {response.json()}"
+            )
 
-    return [
-        repository["name"]
-        for repository in response.json()["data"]
-        if repository["owner"]["username"] == owner
-    ]
+            raise Exception(error_message)
+
+        page_data = response.json()["data"]
+        repositories.extend(
+            repository["name"]
+            for repository in page_data
+            if repository["owner"]["username"] == owner
+        )
+
+        if len(page_data) < REPOSITORY_SEARCH_PAGE_SIZE:
+            break
+        page += 1
+
+    return repositories
 
 
 def main() -> None:
