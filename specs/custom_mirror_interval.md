@@ -88,17 +88,17 @@ expressed.
 
 ### Validation
 
-- Reject values that are not strictly greater than 1 minute
-  (`MIRROR_INTERVAL_MINUTES <= 1`) at startup with a clear error. A value of
-  `0` or `1` is rejected: `0` disables periodic sync entirely (Gitea
-  semantics), and `1` minute is too aggressive/meaningless for this use case,
-  so both are treated as configuration errors rather than silently accepted.
+- Reject values smaller than 1 minute (`MIRROR_INTERVAL_MINUTES < 1`) at
+  startup with a clear error. `1` minute is the smallest accepted interval;
+  `0` is rejected because it disables periodic sync entirely (Gitea
+  semantics), and negative values are meaningless — both are treated as
+  configuration errors rather than silently accepted.
 - Perform this check once, right after reading the environment variable, e.g.:
 
   ```python
-  if MIRROR_INTERVAL_MINUTES <= 1:
+  if MIRROR_INTERVAL_MINUTES < 1:
       error_message = (
-          "MIRROR_INTERVAL_MINUTES must be bigger than 1 minute, "
+          "MIRROR_INTERVAL_MINUTES must be at least 1 minute, "
           f"got {MIRROR_INTERVAL_MINUTES}."
       )
       raise ValueError(error_message)
@@ -113,7 +113,7 @@ expressed.
 
 - `README.md`: add `MIRROR_INTERVAL_MINUTES` to the "Environment Variables"
   list, documenting it as optional, with a default of `10`, and that it must
-  be greater than `1`.
+  be at least `1`.
 
 ### Testing
 
@@ -131,7 +131,7 @@ feature only — not a general test suite for the whole module:
   - Startup validation: reloading the module (or extracting the check into a
     small `validate_mirror_interval_minutes(value: int) -> None` function
     that the module-level code calls) with `MIRROR_INTERVAL_MINUTES` set to
-    `0` and `1` raises `ValueError`; `2` and `10` do not raise.
+    `0` and `-1` raises `ValueError`; `1` and `10` do not raise.
   - `create_migration`: with `requests.post` mocked (`unittest.mock.patch`),
     assert that the JSON body sent to Gitea contains
     `"mirror_interval": to_gitea_duration(mirror_interval_minutes)` for the
@@ -144,6 +144,47 @@ feature only — not a general test suite for the whole module:
 - Manual verification: run the container with `MIRROR_INTERVAL_MINUTES=30`
   set and confirm the created migration's `mirror_interval` field reflects
   `"0h30m0s"` via the Gitea API response or UI.
+
+### CI: run the test suite as a GitHub Action
+
+The repository already runs `lint.yaml` and `build.yaml` on `pull_request`
+and pushes to `main`, using Hatch to set up Python and run scripts (see
+`.github/workflows/lint.yaml`). Add a new workflow following the same
+convention:
+
+- New file `.github/workflows/test.yaml`:
+
+  ```yaml
+  name: Test
+
+  on:
+      pull_request:
+      push:
+          branches: ["main"]
+
+  jobs:
+      test:
+          name: Test
+          runs-on: ubuntu-latest
+          steps:
+              - name: Check out the repository
+                uses: actions/checkout@v5
+
+              - name: Set up Python
+                uses: actions/setup-python@v6
+                with:
+                    python-version: 3.11
+
+              - name: Install Hatch
+                run: pip install hatch
+
+              - name: Test
+                run: hatch run test:run
+  ```
+
+- This relies on the `[tool.hatch.envs.test]` section added to
+  `pyproject.toml` above (with a `run` script invoking `pytest {args:tests}`),
+  keeping the CI step a thin wrapper around the same command used locally.
 
 ## Out of scope
 
