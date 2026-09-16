@@ -29,6 +29,28 @@ REPOSITORY_DATA: dict[str, list[dict[str, str]]] = json.loads(
     os.environ["REPOSITORY_DATA"]
 )
 
+# Mirror interval configuration
+DEFAULT_MIRROR_INTERVAL_MINUTES: int = 10
+MIRROR_INTERVAL_MINUTES: int = int(
+    os.environ.get("MIRROR_INTERVAL_MINUTES", DEFAULT_MIRROR_INTERVAL_MINUTES)
+)
+
+
+def validate_mirror_interval_minutes(value: int) -> None:
+    if value < 1:
+        error_message = (
+            f"MIRROR_INTERVAL_MINUTES must be at least 1 minute, got {value}."
+        )
+        raise ValueError(error_message)
+
+
+validate_mirror_interval_minutes(MIRROR_INTERVAL_MINUTES)
+
+
+def to_gitea_duration(minutes: int) -> str:
+    hours, remaining_minutes = divmod(minutes, 60)
+    return f"{hours}h{remaining_minutes}m0s"
+
 
 def delete_token(username: str, password: str, token_name: str, gitea_url: str) -> None:
     headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -86,12 +108,14 @@ def create_token(
 
 
 def create_migration(
+    *,
     repository_url: str,
     repository_name: str,
     repository_auth_token: str,
     gitea_url: str,
     token: str,
     service: str,
+    mirror_interval_minutes: int,
 ) -> tuple[Any, Any]:
     logger.info(f"Creating a migration for repository {repository_url}")
 
@@ -102,7 +126,7 @@ def create_migration(
         "clone_addr": repository_url,
         "auth_token": repository_auth_token,
         "mirror": True,
-        "mirror_interval": "0h10m0s",
+        "mirror_interval": to_gitea_duration(mirror_interval_minutes),
         "private": False,
         "repo_name": repository_name,
         "service": service,
@@ -250,6 +274,7 @@ def main() -> None:
             gitea_url=MIRROR_SERVER_URL,
             token=gitea_mirror_token,
             service="github",  # TODO(cgavidia): Maybe this can be a parameter.
+            mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
         )
 
         create_migration(
@@ -259,6 +284,7 @@ def main() -> None:
             gitea_url=WORKSPACE_SERVER_URL,
             token=workspace_gitea_token,
             service="gitea",
+            mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
         )
 
 

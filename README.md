@@ -53,6 +53,8 @@ docker run ghcr.io/alan-turing-institute/gitea-mirror-manager:main
   }
   ```
 
+- `MIRROR_INTERVAL_MINUTES` - Optional. The mirror sync interval, in minutes. Defaults to `10`. Must be at least `1`.
+
 
 #### Useful File Locations
 
