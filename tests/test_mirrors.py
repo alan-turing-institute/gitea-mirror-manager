@@ -65,3 +65,16 @@ def test_mirror_interval_minutes_defaults_when_env_var_unset(
         assert mirrors.MIRROR_INTERVAL_MINUTES == 10
     finally:
         importlib.reload(mirrors)
+
+
+def test_mirror_interval_minutes_raises_when_not_a_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MIRROR_INTERVAL_MINUTES", "not-a-number")
+
+    try:
+        with pytest.raises(ValueError, match="not-a-number"):
+            importlib.reload(mirrors)
+    finally:
+        monkeypatch.delenv("MIRROR_INTERVAL_MINUTES", raising=False)
+        importlib.reload(mirrors)
