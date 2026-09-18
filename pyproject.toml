@@ -26,6 +26,11 @@ style = ["ruff check {args:.}", "black --check --diff {args:.}"]
 fmt = ["black {args:.}", "ruff check --fix {args:.}", "style"]
 all = ["style", "typing"]
 
+[tool.hatch.envs.test]
+dependencies = ["pytest>=7.0.0"]
+[tool.hatch.envs.test.scripts]
+run = "pytest {args:tests}"
+
 [tool.black]
 target-version = ["py310", "py311", "py312"]
 

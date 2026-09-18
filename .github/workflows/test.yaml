@@ -1,0 +1,25 @@
+name: Test
+
+on:
+    pull_request:
+    push:
+        branches: ["main"]
+
+jobs:
+    test:
+        name: Test
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v5
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: 3.11
+
+            - name: Install Hatch
+              run: pip install hatch
+
+            - name: Test
+              run: hatch run test:run
