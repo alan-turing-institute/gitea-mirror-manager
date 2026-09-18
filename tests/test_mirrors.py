@@ -1,3 +1,4 @@
+import importlib
 import json
 from unittest.mock import MagicMock, patch
 
@@ -51,3 +52,16 @@ def test_create_migration_sends_configured_mirror_interval() -> None:
     assert sent_data["mirror_interval"] == mirrors.to_gitea_duration(
         mirror_interval_minutes
     )
+
+
+def test_mirror_interval_minutes_defaults_when_env_var_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MIRROR_INTERVAL_MINUTES", raising=False)
+
+    try:
+        importlib.reload(mirrors)
+        assert mirrors.MIRROR_INTERVAL_MINUTES == mirrors.DEFAULT_MIRROR_INTERVAL_MINUTES
+        assert mirrors.MIRROR_INTERVAL_MINUTES == 10
+    finally:
+        importlib.reload(mirrors)
