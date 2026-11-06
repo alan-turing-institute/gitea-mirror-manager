@@ -12,6 +12,11 @@ logging.basicConfig(level=logging.INFO)
 
 DEFAULT_TIMEOUT: int = 5 * 60
 
+
+class MigrationError(RuntimeError):
+    """Raised when Gitea rejects a repository migration."""
+
+
 # Mirror server configuration
 
 MIRROR_SERVER_TOKEN_NAME: str = "mirror_api_token"
@@ -141,12 +146,11 @@ def create_migration(
     )
 
     if not response.status_code == requests.codes.created:
-        error_message: str = (
-            f"Cannot create migration for repository {repository_url}."
-            f" Status code: {response.status_code}. Response {response.json()}"
+        error_message = (
+            f"Cannot create migration for repository {repository_name}."
+            f" Status code: {response.status_code}."
         )
-
-        raise Exception(error_message)
+        raise MigrationError(error_message)
 
     logger.info(
         f"Migration created for user {response.json()['owner']['username']}"
@@ -265,27 +269,43 @@ def main() -> None:
             token=workspace_gitea_token,
         )
 
-    for repository in REPOSITORY_DATA["repositories"]:
+    repositories = REPOSITORY_DATA["repositories"]
+    failed_count = 0
+    for repository in repositories:
+        try:
+            owner, repository_name = create_migration(
+                repository_name=repository["repository_name"],
+                repository_url=repository["repository_url"],
+                repository_auth_token=repository["repository_auth_token"],
+                gitea_url=MIRROR_SERVER_URL,
+                token=gitea_mirror_token,
+                service="github",  # TODO(cgavidia): Maybe this can be a parameter.
+                mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
+            )
 
-        owner, repository_name = create_migration(
-            repository_name=repository["repository_name"],
-            repository_url=repository["repository_url"],
-            repository_auth_token=repository["repository_auth_token"],
-            gitea_url=MIRROR_SERVER_URL,
-            token=gitea_mirror_token,
-            service="github",  # TODO(cgavidia): Maybe this can be a parameter.
-            mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
-        )
+            create_migration(
+                repository_name=f"{repository['repository_name']}-mirror",
+                repository_url=f"{MIRROR_SERVER_URL}/{owner}/{repository_name}",
+                repository_auth_token=gitea_mirror_token,
+                gitea_url=WORKSPACE_SERVER_URL,
+                token=workspace_gitea_token,
+                service="gitea",
+                mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
+            )
+        except (MigrationError, requests.RequestException):
+            failed_count += 1
+            # Server bodies and request exceptions can contain access tokens.
+            logger.error(
+                "Failed to create mirrors for repository %s; continuing with others.",
+                repository["repository_name"],
+            )
 
-        create_migration(
-            repository_name=f"{repository['repository_name']}-mirror",
-            repository_url=f"{MIRROR_SERVER_URL}/{owner}/{repository_name}",
-            repository_auth_token=gitea_mirror_token,
-            gitea_url=WORKSPACE_SERVER_URL,
-            token=workspace_gitea_token,
-            service="gitea",
-            mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
+    if failed_count:
+        error_message = (
+            f"Failed to create mirrors for {failed_count} of {len(repositories)}"
+            " repositories. See the repository names in the log."
         )
+        raise RuntimeError(error_message)
 
 
 if __name__ == "__main__":

@@ -56,6 +56,18 @@ docker run ghcr.io/alan-turing-institute/gitea-mirror-manager:main
 - `MIRROR_INTERVAL_MINUTES` - Optional. The mirror sync interval, in minutes. Defaults to `10`. Must be at least `1`.
 
 
+#### Migration failures
+
+A failed repository migration does not prevent the remaining repositories from
+being processed. The failed repository name is logged without the server response
+or request exception, which may contain credentials. After attempting all
+repositories, the manager exits with an error if any migration failed.
+
+The existing rebuild process still removes the old mirrors before creating new
+ones. A repository with invalid credentials remains unavailable until those
+credentials are corrected and the manager is run again. Failures to set up the
+servers or list existing repositories still stop the run immediately.
+
 #### Useful File Locations
 
 - `gitea_mirror_manager/mirrors.py` - The Python module that setups the mirrors in both Gitea servers, using  [REST API calls](https://docs.gitea.com/api/1.24/).
