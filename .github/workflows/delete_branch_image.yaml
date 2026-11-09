@@ -1,0 +1,38 @@
+name: Delete branch Docker image
+
+on:
+    delete:
+
+jobs:
+    delete-branch-image:
+        name: Delete the Docker image published for a deleted branch
+        if: github.event.ref_type == 'branch' && github.event.ref != github.event.repository.default_branch
+        runs-on: ubuntu-latest
+        permissions:
+            packages: write
+        steps:
+            - name: Delete the image version tagged only with the branch name
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  ORGANISATION: ${{ github.repository_owner }}
+                  PACKAGE_NAME: ${{ github.event.repository.name }}
+                  BRANCH_NAME: ${{ github.event.ref }}
+              run: |
+                  # Same sanitisation docker/metadata-action applies to branch tags.
+                  TAG=$(printf '%s' "$BRANCH_NAME" | sed -E 's/[^a-zA-Z0-9._-]+/-/g')
+                  export TAG
+
+                  version_ids=$(gh api --paginate \
+                      "orgs/$ORGANISATION/packages/container/$PACKAGE_NAME/versions" \
+                      --jq '.[] | select(.metadata.container.tags == [env.TAG]) | .id')
+
+                  if [ -z "$version_ids" ]; then
+                      echo "No image tagged '$TAG' found. Nothing to delete."
+                      exit 0
+                  fi
+
+                  for version_id in $version_ids; do
+                      echo "Deleting image version $version_id tagged '$TAG'."
+                      gh api -X DELETE \
+                          "orgs/$ORGANISATION/packages/container/$PACKAGE_NAME/versions/$version_id"
+                  done
