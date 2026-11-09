@@ -8,7 +8,11 @@ from requests import Response
 from requests.auth import HTTPBasicAuth
 
 logger = logging.getLogger("mirror_manager")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s %(levelname)-8s %(message)s",
+    level=logging.INFO,
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 DEFAULT_TIMEOUT: int = 5 * 60
 
