@@ -36,6 +36,10 @@ MIRROR_INTERVAL_MINUTES: int = int(
 )
 
 
+class GiteaApiError(Exception):
+    """Raised when a Gitea API call returns an unexpected status code."""
+
+
 def validate_mirror_interval_minutes(value: int) -> None:
     if value < 1:
         error_message = (
@@ -64,12 +68,12 @@ def delete_token(username: str, password: str, token_name: str, gitea_url: str) 
     )
 
     if not response.status_code == requests.codes.no_content:
-        logging.info(
+        logger.info(
             f"Cannot delete token {token_name} for user {username}."
             f" Status code: {response.status_code}"
         )
     else:
-        logging.info(
+        logger.info(
             f"Token {token_name} for user {username} deleted."
             f" Status code: {response.status_code}"
         )
@@ -97,12 +101,11 @@ def create_token(
 
     if not response.status_code == requests.codes.created:
         error_message: str = (
-            f"Cannot create tokens for user {username}."
-            f" Status code: {response.status_code}."
-            f" Response {response.json()}"
+            f"Cannot create tokens for user {username} at {gitea_url}."
+            f" Status code: {response.status_code}. Response: {response.text}"
         )
 
-        raise Exception(error_message)
+        raise GiteaApiError(error_message)
 
     return response.json()["sha1"]
 
@@ -119,8 +122,10 @@ def create_migration(
 ) -> tuple[Any, Any]:
     logger.info(f"Creating a migration for repository {repository_url}")
 
-    headers: dict[str, str] = {"Content-Type": "application/json"}
-    params: dict[str, str] = {"access_token": token}
+    headers: dict[str, str] = {
+        "Content-Type": "application/json",
+        "Authorization": f"token {token}",
+    }
 
     data: dict[str, str | bool] = {
         "clone_addr": repository_url,
@@ -134,7 +139,6 @@ def create_migration(
 
     response: Response = requests.post(
         f"{gitea_url}/api/v1/repos/migrate",
-        params=params,
         headers=headers,
         data=json.dumps(data),
         timeout=DEFAULT_TIMEOUT,
@@ -142,11 +146,12 @@ def create_migration(
 
     if not response.status_code == requests.codes.created:
         error_message: str = (
-            f"Cannot create migration for repository {repository_url}."
-            f" Status code: {response.status_code}. Response {response.json()}"
+            f"Cannot create migration {repository_name} at {gitea_url}"
+            f" from repository {repository_url}."
+            f" Status code: {response.status_code}. Response: {response.text}"
         )
 
-        raise Exception(error_message)
+        raise GiteaApiError(error_message)
 
     logger.info(
         f"Migration created for user {response.json()['owner']['username']}"
@@ -162,20 +167,21 @@ def delete_repository(
         f"Attempting to delete repository {repository_name} for user {username}"
     )
 
-    headers: dict[str, str] = {"Content-Type": "application/json"}
-    params: dict[str, str] = {"access_token": token}
+    headers: dict[str, str] = {
+        "Content-Type": "application/json",
+        "Authorization": f"token {token}",
+    }
 
     response: Response = requests.delete(
         f"{gitea_url}/api/v1/repos/{username}/{repository_name}",
-        params=params,
         headers=headers,
         timeout=DEFAULT_TIMEOUT,
     )
 
     if response.status_code == requests.codes.no_content:
-        logging.info("Repository successfully deleted.")
+        logger.info("Repository successfully deleted.")
     else:
-        logging.info(f"Cannot delete repository. Response {response.json()}")
+        logger.info(f"Cannot delete repository. Response: {response.text}")
 
 
 def obtain_api_token(
@@ -199,29 +205,57 @@ def obtain_api_token(
 def get_repositories(owner: str, gitea_url: str, token: str) -> list[str]:
     logger.info(f"Searching for repositories of {owner} at {gitea_url}")
 
-    headers: dict[str, str] = {"Content-Type": "application/json"}
-    params: dict[str, str] = {"access_token": token}
+    headers: dict[str, str] = {
+        "Content-Type": "application/json",
+        "Authorization": f"token {token}",
+    }
 
     response: Response = requests.get(
         f"{gitea_url}/api/v1/repos/search",
-        params=params,
         headers=headers,
         timeout=DEFAULT_TIMEOUT,
     )
 
     if not response.status_code == requests.codes.ok:
         error_message: str = (
-            f"Could not list repositories for user {owner}. "
-            f"Status code: {response.status_code}. Response {response.json()}"
+            f"Could not list repositories for user {owner} at {gitea_url}."
+            f" Status code: {response.status_code}. Response: {response.text}"
         )
 
-        raise Exception(error_message)
+        raise GiteaApiError(error_message)
 
     return [
         repository["name"]
         for repository in response.json()["data"]
         if repository["owner"]["username"] == owner
     ]
+
+
+def mirror_repository(
+    *,
+    repository: dict[str, str],
+    gitea_mirror_token: str,
+    workspace_gitea_token: str,
+) -> None:
+    owner, repository_name = create_migration(
+        repository_name=repository["repository_name"],
+        repository_url=repository["repository_url"],
+        repository_auth_token=repository["repository_auth_token"],
+        gitea_url=MIRROR_SERVER_URL,
+        token=gitea_mirror_token,
+        service="github",  # TODO(cgavidia): Maybe this can be a parameter.
+        mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
+    )
+
+    create_migration(
+        repository_name=f"{repository['repository_name']}-mirror",
+        repository_url=f"{MIRROR_SERVER_URL}/{owner}/{repository_name}",
+        repository_auth_token=gitea_mirror_token,
+        gitea_url=WORKSPACE_SERVER_URL,
+        token=workspace_gitea_token,
+        service="gitea",
+        mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
+    )
 
 
 def main() -> None:
@@ -265,27 +299,33 @@ def main() -> None:
             token=workspace_gitea_token,
         )
 
-    for repository in REPOSITORY_DATA["repositories"]:
+    repositories: list[dict[str, str]] = REPOSITORY_DATA["repositories"]
+    failed_repositories: list[str] = []
+    for repository in repositories:
+        repository_name = repository.get("repository_name", "<missing name>")
+        try:
+            mirror_repository(
+                repository=repository,
+                gitea_mirror_token=gitea_mirror_token,
+                workspace_gitea_token=workspace_gitea_token,
+            )
+        except Exception:
+            # Isolate failures, so one bad repository doesn't block the others.
+            logger.exception(
+                "Failed to mirror repository %s (%s). Continuing with the rest.",
+                repository_name,
+                repository.get("repository_url"),
+            )
+            failed_repositories.append(repository_name)
 
-        owner, repository_name = create_migration(
-            repository_name=repository["repository_name"],
-            repository_url=repository["repository_url"],
-            repository_auth_token=repository["repository_auth_token"],
-            gitea_url=MIRROR_SERVER_URL,
-            token=gitea_mirror_token,
-            service="github",  # TODO(cgavidia): Maybe this can be a parameter.
-            mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
-        )
-
-        create_migration(
-            repository_name=f"{repository['repository_name']}-mirror",
-            repository_url=f"{MIRROR_SERVER_URL}/{owner}/{repository_name}",
-            repository_auth_token=gitea_mirror_token,
-            gitea_url=WORKSPACE_SERVER_URL,
-            token=workspace_gitea_token,
-            service="gitea",
-            mirror_interval_minutes=MIRROR_INTERVAL_MINUTES,
-        )
+    logger.info(
+        "Mirrored %d of %d repositories.",
+        len(repositories) - len(failed_repositories),
+        len(repositories),
+    )
+    if failed_repositories:
+        logger.error("Repositories that failed to mirror: %s", failed_repositories)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

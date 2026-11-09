@@ -55,6 +55,13 @@ docker run ghcr.io/alan-turing-institute/gitea-mirror-manager:main
 
 - `MIRROR_INTERVAL_MINUTES` - Optional. The mirror sync interval, in minutes. Defaults to `10`. Must be at least `1`.
 
+#### Failure Handling
+
+Each repository in `REPOSITORY_DATA` is mirrored independently. If a repository fails (for example, because its
+`repository_auth_token` is expired or invalid), the error is logged with the repository name, the Gitea response and a
+stack trace, and the remaining repositories are still mirrored. Once all repositories are processed, a summary of the
+failed ones is logged and the process exits with status code `1`.
+
 
 #### Useful File Locations
 
