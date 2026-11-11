@@ -63,6 +63,11 @@ def get_migrated_repository_names(post: MagicMock) -> list[str]:
     ]
 
 
+def post_successful_migration(_url: str, **kwargs: str | dict[str, str]) -> MagicMock:
+    repository_name: str = json.loads(str(kwargs["data"]))["repo_name"]
+    return build_migration_response(status_code=201, repository_name=repository_name)
+
+
 @pytest.mark.parametrize(
     "failing_migration_name",
     [FAILING_REPOSITORY, f"{FAILING_REPOSITORY}-mirror"],
@@ -90,9 +95,7 @@ def test_main_continues_after_repository_failure(
             return build_migration_response(
                 status_code=401, repository_name=repository_name
             )
-        return build_migration_response(
-            status_code=201, repository_name=repository_name
-        )
+        return post_successful_migration(url, **kwargs)
 
     post_target = "gitea_mirror_manager.mirrors.requests.post"
     with (
@@ -123,6 +126,51 @@ def test_main_continues_after_repository_failure(
         assert secret not in caplog.text
 
 
+def test_main_continues_after_repository_without_name(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="mirror_manager")
+    prepare_main(monkeypatch=monkeypatch, repository_names=[HEALTHY_REPOSITORY])
+    nameless_repository_url = "https://github.com/example/nameless"
+    repository_data = build_repository_data([HEALTHY_REPOSITORY])
+    repository_data["repositories"].insert(
+        0,
+        {
+            "repository_url": nameless_repository_url,
+            "repository_auth_token": "nameless-secret-token",
+        },
+    )
+    monkeypatch.setattr(mirrors, "REPOSITORY_DATA", repository_data)
+
+    post_target = "gitea_mirror_manager.mirrors.requests.post"
+    with (
+        patch(post_target, side_effect=post_successful_migration) as post,
+        pytest.raises(SystemExit) as exit_info,
+    ):
+        mirrors.main()
+
+    assert exit_info.value.code == 1
+    # The nameless entry fails before any Gitea call is made.
+    assert get_migrated_repository_names(post) == [
+        HEALTHY_REPOSITORY,
+        f"{HEALTHY_REPOSITORY}-mirror",
+    ]
+
+    failure_records = [
+        record
+        for record in caplog.records
+        if record.levelname == "ERROR" and record.exc_info is not None
+    ]
+    assert len(failure_records) == 1
+    assert failure_records[0].exc_info is not None
+    assert failure_records[0].exc_info[0] is KeyError
+    assert "<missing name>" in failure_records[0].getMessage()
+    assert nameless_repository_url in failure_records[0].getMessage()
+    assert "Mirrored 1 of 2 repositories." in caplog.text
+    assert "nameless-secret-token" not in caplog.text
+
+
 def test_main_succeeds_when_all_repositories_mirror(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -133,14 +181,8 @@ def test_main_succeeds_when_all_repositories_mirror(
         repository_names=[FAILING_REPOSITORY, HEALTHY_REPOSITORY],
     )
 
-    def post_migration(_url: str, **kwargs: str | dict[str, str]) -> MagicMock:
-        repository_name: str = json.loads(str(kwargs["data"]))["repo_name"]
-        return build_migration_response(
-            status_code=201, repository_name=repository_name
-        )
-
     post_target = "gitea_mirror_manager.mirrors.requests.post"
-    with patch(post_target, side_effect=post_migration) as post:
+    with patch(post_target, side_effect=post_successful_migration) as post:
         mirrors.main()
 
     assert len(post.call_args_list) == 4
