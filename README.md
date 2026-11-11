@@ -69,7 +69,7 @@ failed ones is logged and the process exits with status code `1`.
 
 ## Built With
 
-- Python v3.13
+- Python v3.14
 - Requests v2.32.5
 
 ## Find Us

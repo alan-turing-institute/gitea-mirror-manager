@@ -32,7 +32,7 @@ dependencies = ["pytest>=7.0.0"]
 run = "pytest {args:tests}"
 
 [tool.black]
-target-version = ["py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312", "py313", "py314"]
 
 [tool.ruff.lint]
 select = [
