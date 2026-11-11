@@ -126,21 +126,27 @@ def test_main_continues_after_repository_failure(
         assert secret not in caplog.text
 
 
-def test_main_continues_after_repository_without_name(
+@pytest.mark.parametrize(
+    ("missing_field", "kept_field", "placeholder"),
+    [
+        ("repository_name", "repository_url", "<missing name>"),
+        ("repository_url", "repository_name", "<missing URL>"),
+    ],
+    ids=["missing-name", "missing-url"],
+)
+def test_main_continues_after_repository_with_missing_field(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    missing_field: str,
+    kept_field: str,
+    placeholder: str,
 ) -> None:
     caplog.set_level(logging.INFO, logger="mirror_manager")
     prepare_main(monkeypatch=monkeypatch, repository_names=[HEALTHY_REPOSITORY])
-    nameless_repository_url = "https://github.com/example/nameless"
+    broken_repository = build_repository_data([FAILING_REPOSITORY])["repositories"][0]
+    del broken_repository[missing_field]
     repository_data = build_repository_data([HEALTHY_REPOSITORY])
-    repository_data["repositories"].insert(
-        0,
-        {
-            "repository_url": nameless_repository_url,
-            "repository_auth_token": "nameless-secret-token",
-        },
-    )
+    repository_data["repositories"].insert(0, broken_repository)
     monkeypatch.setattr(mirrors, "REPOSITORY_DATA", repository_data)
 
     post_target = "gitea_mirror_manager.mirrors.requests.post"
@@ -151,7 +157,7 @@ def test_main_continues_after_repository_without_name(
         mirrors.main()
 
     assert exit_info.value.code == 1
-    # The nameless entry fails before any Gitea call is made.
+    # The broken entry fails before any Gitea call is made.
     assert get_migrated_repository_names(post) == [
         HEALTHY_REPOSITORY,
         f"{HEALTHY_REPOSITORY}-mirror",
@@ -165,10 +171,10 @@ def test_main_continues_after_repository_without_name(
     assert len(failure_records) == 1
     assert failure_records[0].exc_info is not None
     assert failure_records[0].exc_info[0] is KeyError
-    assert "<missing name>" in failure_records[0].getMessage()
-    assert nameless_repository_url in failure_records[0].getMessage()
+    assert placeholder in failure_records[0].getMessage()
+    assert broken_repository[kept_field] in failure_records[0].getMessage()
     assert "Mirrored 1 of 2 repositories." in caplog.text
-    assert "nameless-secret-token" not in caplog.text
+    assert broken_repository["repository_auth_token"] not in caplog.text
 
 
 def test_main_succeeds_when_all_repositories_mirror(

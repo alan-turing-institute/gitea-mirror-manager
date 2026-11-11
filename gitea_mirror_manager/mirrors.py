@@ -303,6 +303,7 @@ def main() -> None:
     failed_repositories: list[str] = []
     for repository in repositories:
         repository_name = repository.get("repository_name", "<missing name>")
+        repository_url = repository.get("repository_url", "<missing URL>")
         try:
             mirror_repository(
                 repository=repository,
@@ -314,7 +315,7 @@ def main() -> None:
             logger.exception(
                 "Failed to mirror repository %s (%s). Continuing with the rest.",
                 repository_name,
-                repository.get("repository_url"),
+                repository_url,
             )
             failed_repositories.append(repository_name)
 
